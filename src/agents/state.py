@@ -69,25 +69,48 @@ class StateManager:
             await db.commit()
 
     async def get_thread_messages(self, thread_id: str) -> List[Dict[str, Any]]:
-        """Get all messages for a thread."""
+            """Get all messages for a thread."""
+            async with self.get_db() as db:
+                async with db.execute(
+                    """
+                    SELECT role, content, created_at, metadata
+                    FROM messages
+                    WHERE thread_id = ?
+                    ORDER BY created_at
+                    """,
+                    (thread_id,)
+                ) as cursor:
+                    messages = await cursor.fetchall()
+                    
+                    return [
+                        {
+                            "role": msg[0],
+                            "content": msg[1],
+                            "created_at": msg[2],
+                            "metadata": json.loads(msg[3])
+                        }
+                        for msg in messages
+                    ]
+
+    async def delete_thread(self, thread_id: str) -> None:
+        """Delete a thread and all its messages."""
         async with self.get_db() as db:
-            async with db.execute(
+            # Delete all messages for the thread
+            await db.execute(
                 """
-                SELECT role, content, created_at, metadata
-                FROM messages
+                DELETE FROM messages
                 WHERE thread_id = ?
-                ORDER BY created_at
                 """,
                 (thread_id,)
-            ) as cursor:
-                messages = await cursor.fetchall()
-                
-                return [
-                    {
-                        "role": msg[0],
-                        "content": msg[1],
-                        "created_at": msg[2],
-                        "metadata": json.loads(msg[3])
-                    }
-                    for msg in messages
-                ]
+            )
+            
+            # Delete the conversation entry
+            await db.execute(
+                """
+                DELETE FROM conversations
+                WHERE thread_id = ?
+                """,
+                (thread_id,)
+            )
+            
+            await db.commit()
