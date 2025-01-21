@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     # Development Mode
     DEBUG: bool = False
 
+    # Research Configuration
+    TAVILY_API_KEY: Annotated[SecretStr, BeforeValidator(check_api_key)]
+    
+    # Research specific settings
+    MAX_SEARCH_RESULTS: int = 3
+    SEARCH_TIMEOUT: int = 30
+
 @lru_cache
 def get_settings() -> Settings:
     return Settings()

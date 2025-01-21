@@ -9,6 +9,9 @@ from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from uuid import uuid4
 
+from src.agents.react_agent import react_agent
+
+
 from src.core.settings import settings
 from src.schema.models import ChatMessage, UserInput
 from src.core.llm import generate_stream
@@ -96,6 +99,70 @@ async def stream_chat(user_input: UserInput) -> StreamingResponse:
         _stream_generator(user_input),
         media_type="text/event-stream"
     )
+
+
+#########################################333
+
+@app.post("/react")
+async def react_chat(user_input: UserInput) -> ChatMessage:
+    """
+    ReAct agent endpoint that uses tools for enhanced responses.
+    """
+    try:
+        result = await react_agent.handle_message(
+            message=user_input.message,
+            thread_id=user_input.thread_id,
+            model=user_input.model,
+            metadata=user_input.metadata
+        )
+        
+        return ChatMessage(
+            type="ai",
+            content=result["response"],
+            metadata={"thread_id": result["thread_id"]} if result["thread_id"] else {}
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error processing ReAct request: {str(e)}"
+        )
+
+async def _react_stream_generator(user_input: UserInput) -> AsyncGenerator[str, None]:
+    """Generate streaming response for ReAct agent."""
+    try:
+        result = await react_agent.handle_message(
+            message=user_input.message,
+            thread_id=user_input.thread_id,
+            model=user_input.model,
+            metadata=user_input.metadata
+        )
+        
+        # Stream the response in smaller chunks
+        response = result["response"]
+        chunk_size = 100
+        for i in range(0, len(response), chunk_size):
+            chunk = response[i:i + chunk_size]
+            yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
+            
+        yield "data: [DONE]\n\n"
+    except Exception as e:
+        yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+
+@app.post("/react/stream")
+async def stream_react_chat(user_input: UserInput) -> StreamingResponse:
+    """Stream ReAct agent responses."""
+    return StreamingResponse(
+        _react_stream_generator(user_input),
+        media_type="text/event-stream"
+    )
+
+
+
+
+
+
+
+
 
 @app.get("/health")
 async def health_check():
