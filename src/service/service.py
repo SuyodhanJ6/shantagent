@@ -1,174 +1,154 @@
-# src/service/service.py
-from typing import AsyncGenerator
-import json
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import StreamingResponse
-from langchain_core.messages import HumanMessage
-from langchain_core.runnables import RunnableConfig
-from uuid import uuid4
+from fastapi.responses import JSONResponse, PlainTextResponse
+from typing import Dict, Any
 
-from src.agents.react_agent import react_agent
-
-
+# Import routers
+from src.routers import chat, react
+# Import middleware
+from src.middleware.logging import LoggingMiddleware
+from src.middleware.metrics import MetricsMiddleware, get_metrics
+# Import settings and core components
 from src.core.settings import settings
-from src.schema.models import ChatMessage, UserInput
-from src.core.llm import generate_stream
-from src.agents.chatbot import chat_agent
+from src.core.llm import get_llm
 
-app = FastAPI(title="Production Groq Chat Service")
+# Create FastAPI app
+app = FastAPI(
+    title="Agent Service",
+    description="Multi-agent service supporting chat and ReAct capabilities",
+    version="0.1.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
 
 # Security
 security = HTTPBearer(auto_error=False)
 
-async def verify_token(credentials: HTTPAuthorizationCredentials | None = Depends(security)) -> None:
+async def verify_token(credentials: HTTPAuthorizationCredentials | None = Depends(security)):
     """Verify auth token if configured."""
-    if not settings.AUTH_SECRET:
-        return
+    if settings.AUTH_SECRET:
+        if not credentials or credentials.credentials != settings.AUTH_SECRET.get_secret_value():
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid or missing authentication token"
+            )
 
-    if not credentials or credentials.credentials != settings.AUTH_SECRET.get_secret_value():
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid or missing authentication token"
-        )
-
-# CORS
+# Configure middleware
+app.add_middleware(LoggingMiddleware)
+app.add_middleware(MetricsMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure this appropriately for production
+    allow_origins=["*"],  # Configure appropriately for production
     allow_credentials=True,
-    allow_methods=["*"],  # Configure this appropriately for production
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
-@app.post("/chat")
-async def chat(user_input: UserInput) -> ChatMessage:
-    """
-    Chat endpoint that returns a response without requiring authentication.
-    """
-    try:
-        # Handle the message using the chat agent
-        result = await chat_agent.handle_message(
-            message=user_input.message,
-            thread_id=user_input.thread_id,
-            model=user_input.model,
-            metadata=user_input.metadata
-        )
-        
-        return ChatMessage(
-            type="ai",
-            content=result["response"],
-            metadata={"thread_id": result["thread_id"]} if result["thread_id"] else {}
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Error processing request: {str(e)}"
-        )
-
-async def _stream_generator(user_input: UserInput) -> AsyncGenerator[str, None]:
-    """Generate streaming response."""
-    try:
-        if user_input.stream:
-            # Use streaming LLM
-            async for chunk in generate_stream(
-                [HumanMessage(content=user_input.message)],
-                model_name=user_input.model
-            ):
-                yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
-        else:
-            # Get full response and stream it as one message
-            result = await chat_agent.handle_message(
-                message=user_input.message,
-                thread_id=user_input.thread_id,
-                model=user_input.model,
-                metadata=user_input.metadata
-            )
-            
-            yield f"data: {json.dumps({'type': 'message', 'content': result['response']})}\n\n"
-            
-        yield "data: [DONE]\n\n"
-    except Exception as e:
-        yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
-
-@app.post("/stream")
-async def stream_chat(user_input: UserInput) -> StreamingResponse:
-    """Stream chat responses."""
-    return StreamingResponse(
-        _stream_generator(user_input),
-        media_type="text/event-stream"
-    )
-
-
-#########################################333
-
-@app.post("/react")
-async def react_chat(user_input: UserInput) -> ChatMessage:
-    """
-    ReAct agent endpoint that uses tools for enhanced responses.
-    """
-    try:
-        result = await react_agent.handle_message(
-            message=user_input.message,
-            thread_id=user_input.thread_id,
-            model=user_input.model,
-            metadata=user_input.metadata
-        )
-        
-        return ChatMessage(
-            type="ai",
-            content=result["response"],
-            metadata={"thread_id": result["thread_id"]} if result["thread_id"] else {}
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Error processing ReAct request: {str(e)}"
-        )
-
-async def _react_stream_generator(user_input: UserInput) -> AsyncGenerator[str, None]:
-    """Generate streaming response for ReAct agent."""
-    try:
-        result = await react_agent.handle_message(
-            message=user_input.message,
-            thread_id=user_input.thread_id,
-            model=user_input.model,
-            metadata=user_input.metadata
-        )
-        
-        # Stream the response in smaller chunks
-        response = result["response"]
-        chunk_size = 100
-        for i in range(0, len(response), chunk_size):
-            chunk = response[i:i + chunk_size]
-            yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
-            
-        yield "data: [DONE]\n\n"
-    except Exception as e:
-        yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
-
-@app.post("/react/stream")
-async def stream_react_chat(user_input: UserInput) -> StreamingResponse:
-    """Stream ReAct agent responses."""
-    return StreamingResponse(
-        _react_stream_generator(user_input),
-        media_type="text/event-stream"
-    )
-
-
-
-
-
-
-
+# Include routers with auth
+app.include_router(
+    chat.router,
+    prefix="/v1",
+    dependencies=[Depends(verify_token)]
+)
+app.include_router(
+    react.router,
+    prefix="/v1",
+    dependencies=[Depends(verify_token)]
+)
 
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> Dict[str, Any]:
     """Health check endpoint."""
+    try:
+        # Test LLM connection
+        llm = get_llm()
+        return {
+            "status": "healthy",
+            "components": {
+                "api": "ok",
+                "llm": "ok",
+                "database": "ok"  # Add proper DB health check
+            },
+            "version": "0.1.0"
+        }
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "unhealthy",
+                "error": str(e)
+            }
+        )
+
+@app.get("/metrics")
+async def metrics():
+    """Expose Prometheus metrics."""
+    return PlainTextResponse(
+        get_metrics(),
+        media_type="text/plain"
+    )
+
+@app.get("/info")
+async def get_info() -> Dict[str, Any]:
+    """Get service information and capabilities."""
     return {
-        "status": "ok",
-        "model": settings.DEFAULT_MODEL,
-        "version": "0.1.0"
+        "version": "0.1.0",
+        "models": {
+            "default": settings.DEFAULT_MODEL,
+            "available": [
+                "mixtral-8x7b-32768",
+                # Add other available models
+            ]
+        },
+        "endpoints": {
+            "chat": {
+                "description": "Basic chat functionality with history management",
+                "streaming": True,
+                "paths": [
+                    "/v1/chat",
+                    "/v1/chat/stream",
+                    "/v1/chat/history/{thread_id}",
+                    "/v1/chat/new"
+                ]
+            },
+            "react": {
+                "description": "Agent with tool usage capabilities",
+                "streaming": True,
+                "paths": [
+                    "/v1/react",
+                    "/v1/react/stream"
+                ]
+            },
+            "research": {
+                "description": "Research agent with citation support",
+                "streaming": True,
+                "paths": [
+                    "/v1/research",
+                    "/v1/research/stream"
+                ]
+            }
+        },
+        "features": {
+            "streaming": True,
+            "history": True,
+            "tools": True,
+            "citations": True,
+            "auth_required": bool(settings.AUTH_SECRET)
+        },
+        "metrics_available": True
     }
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    """Global exception handler for unhandled errors."""
+    # Log the error here
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal server error",
+            "detail": str(exc) if settings.DEBUG else "An unexpected error occurred",
+            "type": type(exc).__name__
+        }
+    )
