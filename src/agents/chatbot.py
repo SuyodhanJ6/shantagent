@@ -6,18 +6,20 @@ from langgraph.graph import END, MessagesState, StateGraph
 
 from src.core.llm import get_llm
 from src.agents.state import StateManager
-
-from opik.integrations.langchain import OpikTracer
+from src.core.tracer import get_tracer, configure_tracer
 
 class AgentState(MessagesState, total=False):
     """Agent state using MessagesState."""
     thread_id: str
     metadata: Dict[str, Any]
 
+
 class ChatAgent:
-    def __init__(self, tracer: Optional[OpikTracer] = None):
+    def __init__(self):
         self.state_manager = StateManager()
-        self.opik_tracer = tracer
+        self.opik_tracer = get_tracer()
+        if self.opik_tracer:
+            self.opik_tracer = configure_tracer(self.opik_tracer)
         self.agent = self._build_agent()
 
     def _build_agent(self) -> StateGraph:
@@ -29,32 +31,41 @@ class ChatAgent:
         
         # If tracer is available, wrap the graph
         if self.opik_tracer:
-            agent = self.opik_tracer.trace_graph(agent)
+            try:
+                agent = self.opik_tracer.trace_graph(agent)
+            except Exception as e:
+                print(f"Warning: Failed to trace graph: {e}")
         
         return agent.compile()
 
     async def _call_model(self, state: AgentState, config: RunnableConfig) -> AgentState:
         """Call the LLM model."""
-        model = get_llm(
-            config["configurable"].get("model"),
-            trace=self.opik_tracer
-        )
-        messages = state["messages"]
-        response = await model.ainvoke(messages)
-        
-        # Save to state manager if thread_id is provided
-        thread_id = config["configurable"].get("thread_id")
-        if thread_id:
-            await self.state_manager.save_message(
-                thread_id,
-                {
-                    "role": "ai",
-                    "content": response.content,
-                    "metadata": config["configurable"].get("metadata", {})
-                }
+        try:
+            model = get_llm(
+                config["configurable"].get("model"),
+                trace=self.opik_tracer if self.opik_tracer else None
             )
-        
-        return {"messages": [response]}
+            messages = state["messages"]
+            response = await model.ainvoke(messages)
+            
+            # Save to state manager if thread_id is provided
+            thread_id = config["configurable"].get("thread_id")
+            if thread_id:
+                await self.state_manager.save_message(
+                    thread_id,
+                    {
+                        "role": "ai",
+                        "content": response.content,
+                        "metadata": config["configurable"].get("metadata", {})
+                    }
+                )
+            
+            return {"messages": [response]}
+        except Exception as e:
+            if self.opik_tracer:
+                # Log error in tracer
+                self.opik_tracer.on_llm_error(error=str(e))
+            raise
 
     async def handle_message(
         self, 
@@ -104,10 +115,8 @@ class ChatAgent:
             "response": response["messages"][-1].content
         }
     
-opik_tracer = OpikTracer(
-    project_name="agent-service",  # Your project name
-    environment="production",  # or "development"
-    # Optional: add more configuration
-)
-# Create singleton instance
-chat_agent = ChatAgent(tracer=opik_tracer)
+try:
+    chat_agent = ChatAgent()
+except Exception as e:
+    print(f"Error creating ChatAgent: {e}")
+    raise

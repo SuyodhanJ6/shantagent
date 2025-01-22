@@ -7,14 +7,16 @@ from langchain_core.tools import tool
 
 from src.core.llm import get_llm
 from src.agents.state import StateManager
-from opik.integrations.langchain import OpikTracer
+from src.core.tracer import get_tracer
 
 class ReactAgent:
     def __init__(self):
         self.state_manager = StateManager()
+        self.opik_tracer = get_tracer()
         self.tools = self._get_tools()
         self.agent = self._build_agent()
         self.checkpointer = MemorySaver()
+
 
     def _get_tools(self):
         """Initialize available tools."""
@@ -78,7 +80,7 @@ class ReactAgent:
         else:
             messages = [{"role": "user", "content": message}]
 
-        # Process with ReAct agent
+        # Process with ReAct agenta
         final_state = self.agent.invoke(
             {"messages": messages},
             config={"configurable": {
@@ -108,11 +110,4 @@ class ReactAgent:
         }
 
 # Create singleton instance
-opik_tracer = OpikTracer(
-    project_name="agent-service",  # Your project name
-    environment="production",  # or "development"
-    # Optional: add more configuration
-)
-# Create singleton instance
-
-react_agent = ReactAgent(tracer=opik_tracer)
+react_agent = ReactAgent()
