@@ -13,6 +13,15 @@ from src.middleware.metrics import MetricsMiddleware, get_metrics
 from src.core.settings import settings
 from src.core.llm import get_llm
 
+from opik.integrations.langchain import OpikTracer
+
+opik_tracer = OpikTracer(
+    project_name="agent-service",  # Your project name
+    environment="production",  # or "development"
+    # Optional: add more configuration
+)
+
+
 # Create FastAPI app
 app = FastAPI(
     title="Agent Service",
@@ -21,6 +30,8 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+
 
 # Security
 security = HTTPBearer(auto_error=False)

@@ -7,6 +7,7 @@ from langchain_core.tools import tool
 
 from src.core.llm import get_llm
 from src.agents.state import StateManager
+from opik.integrations.langchain import OpikTracer
 
 class ReactAgent:
     def __init__(self):
@@ -107,4 +108,11 @@ class ReactAgent:
         }
 
 # Create singleton instance
-react_agent = ReactAgent()
+opik_tracer = OpikTracer(
+    project_name="agent-service",  # Your project name
+    environment="production",  # or "development"
+    # Optional: add more configuration
+)
+# Create singleton instance
+
+react_agent = ReactAgent(tracer=opik_tracer)

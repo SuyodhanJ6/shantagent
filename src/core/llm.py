@@ -6,6 +6,8 @@ from langchain_groq import ChatGroq
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain_core.messages import HumanMessage, AIMessage
 from groq import AsyncGroq
+from opik.integrations.langchain import OpikTracer
+from typing import Optional
 
 from src.core.settings import settings
 
@@ -20,13 +22,17 @@ class StreamingCallbackHandler(BaseCallbackHandler):
         self.tokens.append(token)
 
 @cache
-def get_llm(model_name: str | None = None, streaming: bool = False) -> ChatGroq:
-    """Get a cached LLM instance."""
+def get_llm(
+    model_name: str | None = None, 
+    streaming: bool = False, 
+    trace: Optional[OpikTracer] = None
+) -> ChatGroq:
+    """Get a cached LLM instance with optional Opik tracing."""
     model = model_name or settings.DEFAULT_MODEL
     
     callback_manager = CallbackManager([StreamingCallbackHandler()]) if streaming else None
     
-    return ChatGroq(
+    llm = ChatGroq(
         model=model,
         api_key=settings.GROQ_API_KEY.get_secret_value(),
         temperature=settings.MODEL_TEMPERATURE,
@@ -34,6 +40,12 @@ def get_llm(model_name: str | None = None, streaming: bool = False) -> ChatGroq:
         streaming=streaming,
         callback_manager=callback_manager if streaming else None,
     )
+    
+    # Wrap LLM with Opik tracer if provided
+    if trace:
+        llm = trace.trace_llm(llm)
+    
+    return llm
 
 async def generate_stream(
     messages: List[HumanMessage | AIMessage], 

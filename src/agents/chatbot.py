@@ -7,27 +7,38 @@ from langgraph.graph import END, MessagesState, StateGraph
 from src.core.llm import get_llm
 from src.agents.state import StateManager
 
+from opik.integrations.langchain import OpikTracer
+
 class AgentState(MessagesState, total=False):
     """Agent state using MessagesState."""
     thread_id: str
     metadata: Dict[str, Any]
 
 class ChatAgent:
-    def __init__(self):
+    def __init__(self, tracer: Optional[OpikTracer] = None):
         self.state_manager = StateManager()
+        self.opik_tracer = tracer
         self.agent = self._build_agent()
 
     def _build_agent(self) -> StateGraph:
-        """Build the agent graph."""
+        """Build the agent graph with optional tracing."""
         agent = StateGraph(AgentState)
         agent.add_node("model", self._call_model)
         agent.set_entry_point("model")
         agent.add_edge("model", END)
+        
+        # If tracer is available, wrap the graph
+        if self.opik_tracer:
+            agent = self.opik_tracer.trace_graph(agent)
+        
         return agent.compile()
 
     async def _call_model(self, state: AgentState, config: RunnableConfig) -> AgentState:
         """Call the LLM model."""
-        model = get_llm(config["configurable"].get("model"))
+        model = get_llm(
+            config["configurable"].get("model"),
+            trace=self.opik_tracer
+        )
         messages = state["messages"]
         response = await model.ainvoke(messages)
         
@@ -92,6 +103,11 @@ class ChatAgent:
             "thread_id": thread_id,
             "response": response["messages"][-1].content
         }
-
+    
+opik_tracer = OpikTracer(
+    project_name="agent-service",  # Your project name
+    environment="production",  # or "development"
+    # Optional: add more configuration
+)
 # Create singleton instance
-chat_agent = ChatAgent()
+chat_agent = ChatAgent(tracer=opik_tracer)
