@@ -1,4 +1,4 @@
 from . import chat
-from . import react
+from . import research
 
-__all__ = ['chat', 'react']
+__all__ = ['chat', 'research']

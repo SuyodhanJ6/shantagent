@@ -5,7 +5,8 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from typing import Dict, Any
 
 # Import routers
-from src.routers import chat, react
+from src.routers import chat
+from src.routers import research
 # Import middleware
 from src.middleware.logging import LoggingMiddleware
 from src.middleware.metrics import MetricsMiddleware, get_metrics
@@ -52,7 +53,7 @@ app.include_router(
     dependencies=[Depends(verify_token)]
 )
 app.include_router(
-    react.router,
+    research.router,
     prefix="/v1",
     dependencies=[Depends(verify_token)]
 )
