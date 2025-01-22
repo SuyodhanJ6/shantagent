@@ -5,7 +5,7 @@ import json
 from typing import AsyncGenerator
 
 from src.schema.models import ChatMessage, UserInput
-from src.agents.react_agent import react_agent
+from src.agents.react_agent import research_agent
 
 router = APIRouter(prefix="/react", tags=["react"])
 
@@ -15,7 +15,7 @@ async def react_chat(user_input: UserInput) -> ChatMessage:
     ReAct agent endpoint that uses tools for enhanced responses.
     """
     try:
-        result = await react_agent.handle_message(
+        result = await research_agent.handle_message(
             message=user_input.message,
             thread_id=user_input.thread_id,
             model=user_input.model,
@@ -40,7 +40,7 @@ async def _stream_generator(user_input: UserInput) -> AsyncGenerator[str, None]:
     """Generate streaming response for ReAct agent."""
     try:
         # Process with agent
-        result = await react_agent.handle_message(
+        result = await research_agent.handle_message(
             message=user_input.message,
             thread_id=user_input.thread_id,
             model=user_input.model,
