@@ -17,7 +17,8 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 async def chat(user_input: UserInput) -> ChatMessage:
     """Basic chat endpoint that handles message history and state management."""
     try:
-        print(f"Processing chat request: {user_input}") # Debug log
+        print(f"\n=== Processing chat request ===")
+        print(f"Input: {user_input}")
         
         result = await chat_agent.handle_message(
             message=user_input.message,
@@ -25,24 +26,33 @@ async def chat(user_input: UserInput) -> ChatMessage:
             model=user_input.model,
             metadata=user_input.metadata
         )
-        print(f"Got chat result: {result}") # Debug log
+        print(f"Chat result: {result}")
         
-        if not result or "response" not in result:
+        if not result:
+            print("No result received from agent")
             raise HTTPException(
                 status_code=500,
                 detail="No response received from model"
             )
             
-        return ChatMessage(
+        response_content = result.get("response", "")
+        print(f"Extracted response content: {response_content}")
+        
+        response = ChatMessage(
             type="ai",
-            content=result["response"],
+            content=response_content,
             metadata={
-                "thread_id": result["thread_id"] if result["thread_id"] else None,
+                "thread_id": result.get("thread_id"),
                 "model": user_input.model
             }
         )
+        print(f"Final response object: {response}")
+        return response
+        
     except Exception as e:
-        print(f"Error in chat endpoint: {str(e)}") # Debug log
+        print(f"Error in chat endpoint: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
         raise HTTPException(
             status_code=500,
             detail=f"Error processing chat request: {str(e)}"

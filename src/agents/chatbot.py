@@ -28,29 +28,48 @@ class ChatAgent:
     async def _call_model(self, state: AgentState, config: RunnableConfig) -> AgentState:
         """Call the LLM model."""
         try:
-            print("Starting model call") # Debug log
+            print("Starting model call with state:", state)
+            print("Config:", config)
+            
             model = get_llm(config["configurable"].get("model"))
             messages = state["messages"]
-            print(f"Sending messages to model: {messages}") # Debug log
+            print("Sending messages to model:", messages)
             
             response = await model.ainvoke(messages)
-            print(f"Received response from model: {response}") # Debug log
+            print("Raw response from model:", response)
             
-            # Save to state manager if thread_id is provided
+            # Create new state with response
+            new_state = state.copy()
+            if hasattr(response, 'content'):
+                response_content = response.content
+            else:
+                response_content = str(response)
+            print("Processed response content:", response_content)
+            
+            # Create AIMessage
+            new_message = AIMessage(content=response_content)
+            new_state["messages"] = messages + [new_message]
+            
+            # Save to state manager if thread_id provided
             thread_id = config["configurable"].get("thread_id")
             if thread_id:
                 await self.state_manager.save_message(
                     thread_id,
                     {
                         "role": "ai",
-                        "content": response.content,
+                        "content": response_content,
                         "metadata": config["configurable"].get("metadata", {})
                     }
                 )
+                print(f"Saved message to thread {thread_id}")
             
-            return {"messages": [response]}
+            print("Returning new state:", new_state)
+            return new_state
+            
         except Exception as e:
-            print(f"Error in _call_model: {str(e)}") # Debug log
+            print(f"Error in _call_model: {str(e)}")
+            import traceback
+            print(traceback.format_exc())
             raise
 
     async def handle_message(
@@ -62,9 +81,10 @@ class ChatAgent:
     ) -> Dict[str, Any]:
         """Handle a new message with conversation history."""
         try:
-            print(f"Processing message: {message}")  # Debug log
+            print(f"Processing message: {message} for thread: {thread_id}")
             
             if thread_id:
+                print("Getting thread history")
                 # Save user message
                 await self.state_manager.save_message(
                     thread_id,
@@ -77,6 +97,7 @@ class ChatAgent:
                 
                 # Get conversation history
                 history = await self.state_manager.get_thread_messages(thread_id)
+                print("Thread history:", history)
                 messages = [
                     HumanMessage(content=msg["content"]) if msg["role"] == "human"
                     else AIMessage(content=msg["content"])
@@ -85,10 +106,10 @@ class ChatAgent:
             else:
                 messages = [HumanMessage(content=message)]
                 
-            print(f"Calling agent with messages: {messages}")  # Debug log
+            print(f"Calling agent with messages:", messages)
             
             # Process with agent
-            response = await self.agent.ainvoke(
+            agent_response = await self.agent.ainvoke(
                 {
                     "messages": messages,
                 },
@@ -100,15 +121,24 @@ class ChatAgent:
                     }
                 )
             )
+            print("Agent response:", agent_response)
             
-            print(f"Got response: {response}")  # Debug log
+            # Extract response content
+            if isinstance(agent_response, dict) and "messages" in agent_response:
+                response = agent_response["messages"][-1].content
+            else:
+                response = str(agent_response)
+                
+            print("Final extracted response:", response)
             
             return {
                 "thread_id": thread_id,
-                "response": response["messages"][-1].content
+                "response": response
             }
         except Exception as e:
-            print(f"Error in handle_message: {e}")  # Debug log
+            print(f"Error in handle_message: {e}")
+            import traceback
+            print(traceback.format_exc())
             raise
 
 # Create singleton instance

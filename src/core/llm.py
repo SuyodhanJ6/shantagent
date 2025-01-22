@@ -22,8 +22,6 @@ class StreamingCallbackHandler(BaseCallbackHandler):
 @cache
 def get_llm(model_name: str | None = None, streaming: bool = False) -> ChatGroq:
     """Get a cached LLM instance."""
-    print(f"Creating LLM instance with model: {model_name}") # Debug log
-    
     model = model_name or settings.DEFAULT_MODEL
     
     return ChatGroq(

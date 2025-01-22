@@ -63,56 +63,61 @@ class ReactAgent:
         metadata: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Handle a new message with ReAct agent."""
-        if thread_id:
-            # Save user message
-            await self.state_manager.save_message(
-                thread_id,
-                {
-                    "role": "human",
-                    "content": message,
-                    "metadata": metadata or {}
+        try:
+            formatted_messages = [{"role": "user", "content": message}]
+
+            if thread_id:
+                # Save user message
+                await self.state_manager.save_message(
+                    thread_id,
+                    {
+                        "role": "human",
+                        "content": message,
+                        "metadata": metadata or {}
+                    }
+                )
+                
+                # Get conversation history
+                history = await self.state_manager.get_thread_messages(thread_id)
+                formatted_messages = [
+                    {"role": msg["role"], "content": msg["content"]}
+                    for msg in history
+                ]
+
+            # Process with ReAct agent
+            response = await self.agent.ainvoke(
+                formatted_messages,
+                config={
+                    "configurable": {
+                        "thread_id": thread_id,
+                        "model": model,
+                        "metadata": metadata
+                    }
                 }
             )
             
-            # Get conversation history
-            history = await self.state_manager.get_thread_messages(thread_id)
-            messages = [
-                {"role": "user" if msg["role"] == "human" else "assistant",
-                 "content": msg["content"]}
-                for msg in history
-            ]
-        else:
-            messages = [{"role": "user", "content": message}]
+            response_text = response.output if hasattr(response, "output") else str(response)
 
-        # Process with ReAct agent
-        final_state = self.agent.invoke(
-            {"messages": messages},
-            config={"configurable": {
+            # Save AI response if thread exists
+            if thread_id:
+                await self.state_manager.save_message(
+                    thread_id,
+                    {
+                        "role": "ai",
+                        "content": response_text,
+                        "metadata": metadata or {}
+                    }
+                )
+
+            return {
                 "thread_id": thread_id,
-                "model": model,
-                "metadata": metadata
-            }}
-        )
-        
-        # Extract response
-        response = final_state["messages"][-1].content
-        
-        # Save AI response if thread exists
-        if thread_id:
-            await self.state_manager.save_message(
-                thread_id,
-                {
-                    "role": "ai",
-                    "content": response,
-                    "metadata": metadata or {}
-                }
-            )
+                "response": response_text,
+                "tools_used": getattr(response, "intermediate_steps", [])
+            }
 
-        return {
-            "thread_id": thread_id,
-            "response": response,
-            "tools_used": final_state.get("tool_calls", [])
-        }
+        except Exception as e:
+            print(f"Error in handle_message: {str(e)}") # Debug log
+            raise
 
 # Create singleton instances
 safety = LlamaSafety(api_key=settings.GROQ_API_KEY.get_secret_value())
