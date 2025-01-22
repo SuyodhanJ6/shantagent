@@ -28,18 +28,21 @@ class Settings(BaseSettings):
     MODEL_TEMPERATURE: float = 0.7
     MAX_TOKENS: int = 2048
     
+    # Safety Configuration
+    ENABLE_SAFETY_CHECKS: bool = True
+    SAFETY_MODEL: str = "llama-guard-2"
+    SAFETY_THRESHOLD: float = 0.8
+    
+    # Task Configuration
+    MAX_CONCURRENT_TASKS: int = 5
+    TASK_QUEUE_SIZE: int = 100
+    TASK_CHECK_INTERVAL: float = 1.0  # seconds
+    
     # Database Configuration
     DB_URL: str = "sqlite:///./chatbot.db"
     
     # Development Mode
     DEBUG: bool = False
-
-    # Research Configuration
-    TAVILY_API_KEY: Annotated[SecretStr, BeforeValidator(check_api_key)]
-    
-    # Research specific settings
-    MAX_SEARCH_RESULTS: int = 3
-    SEARCH_TIMEOUT: int = 30
 
 @lru_cache
 def get_settings() -> Settings:

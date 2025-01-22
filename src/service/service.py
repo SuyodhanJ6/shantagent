@@ -1,3 +1,4 @@
+# src/service/service.py
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -5,18 +6,24 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from typing import Dict, Any
 
 # Import routers
-from src.routers import chat, react
+from ..routers import chat, react, tasks
+
 # Import middleware
-from src.middleware.logging import LoggingMiddleware
-from src.middleware.metrics import MetricsMiddleware, get_metrics
+from ..middleware.logging import LoggingMiddleware
+from ..middleware.metrics import MetricsMiddleware, get_metrics
+from ..middleware.safety import SafetyMiddleware
+
 # Import settings and core components
-from src.core.settings import settings
-from src.core.llm import get_llm
+from ..core.settings import settings
+from ..core.llm import get_llm
+from ..agents.bg_tasks.tasks import TaskManager
+from ..agents.bg_tasks.agent import BackgroundAgent
+from src.agents.bg_tasks.tasks import BackgroundAgent
 
 # Create FastAPI app
 app = FastAPI(
     title="Agent Service",
-    description="Multi-agent service supporting chat and ReAct capabilities",
+    description="Multi-agent service supporting chat, ReAct capabilities, and background tasks",
     version="0.1.0",
     docs_url="/docs",
     redoc_url="/redoc"
@@ -37,6 +44,7 @@ async def verify_token(credentials: HTTPAuthorizationCredentials | None = Depend
 # Configure middleware
 app.add_middleware(LoggingMiddleware)
 app.add_middleware(MetricsMiddleware)
+app.add_middleware(SafetyMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Configure appropriately for production
@@ -44,6 +52,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Initialize task management
+task_manager = TaskManager()
+bg_agent = BackgroundAgent(task_manager)
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize components on startup."""
+    # Initialize task database
+    await task_manager.init_db()
+    # Start background task processor
+    await bg_agent.start()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown."""
+    await bg_agent.stop()
 
 # Include routers with auth
 app.include_router(
@@ -56,7 +81,11 @@ app.include_router(
     prefix="/v1",
     dependencies=[Depends(verify_token)]
 )
-
+app.include_router(
+    tasks.router,
+    prefix="/v1",
+    dependencies=[Depends(verify_token)]
+)
 
 @app.get("/health")
 async def health_check() -> Dict[str, Any]:
@@ -64,12 +93,17 @@ async def health_check() -> Dict[str, Any]:
     try:
         # Test LLM connection
         llm = get_llm()
+        
+        # Check task processor status
+        task_status = "ok" if bg_agent._running else "not running"
+        
         return {
             "status": "healthy",
             "components": {
                 "api": "ok",
                 "llm": "ok",
-                "database": "ok"  # Add proper DB health check
+                "tasks": task_status,
+                "database": "ok"
             },
             "version": "0.1.0"
         }
@@ -99,7 +133,7 @@ async def get_info() -> Dict[str, Any]:
             "default": settings.DEFAULT_MODEL,
             "available": [
                 "mixtral-8x7b-32768",
-                # Add other available models
+                "llama-guard-2"
             ]
         },
         "endpoints": {
@@ -121,12 +155,12 @@ async def get_info() -> Dict[str, Any]:
                     "/v1/react/stream"
                 ]
             },
-            "research": {
-                "description": "Research agent with citation support",
-                "streaming": True,
+            "tasks": {
+                "description": "Background task management",
                 "paths": [
-                    "/v1/research",
-                    "/v1/research/stream"
+                    "/v1/tasks",
+                    "/v1/tasks/{task_id}",
+                    "/v1/tasks/{task_id}/retry"
                 ]
             }
         },
@@ -134,7 +168,8 @@ async def get_info() -> Dict[str, Any]:
             "streaming": True,
             "history": True,
             "tools": True,
-            "citations": True,
+            "background_tasks": True,
+            "safety_checks": True,
             "auth_required": bool(settings.AUTH_SECRET)
         },
         "metrics_available": True
@@ -143,7 +178,6 @@ async def get_info() -> Dict[str, Any]:
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
     """Global exception handler for unhandled errors."""
-    # Log the error here
     return JSONResponse(
         status_code=500,
         content={
