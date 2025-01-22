@@ -28,7 +28,7 @@ class ResearchAgent:
     def _get_tools(self) -> List[Any]:
         """Initialize research and utility tools."""
         tools = [
-            TavilySearchResults(max_results=3),
+            TavilySearchResults(max_results=2),
         ]
 
         @tool
@@ -66,7 +66,7 @@ class ResearchAgent:
         last_message = messages[-1].content if messages else ""
 
         # Perform search based on the query
-        search_tool = TavilySearchResults(max_results=3)
+        search_tool = TavilySearchResults(max_results=2)
         search_results = await search_tool.ainvoke(last_message)
         
         # Format and store search results

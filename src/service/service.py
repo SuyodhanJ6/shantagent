@@ -7,6 +7,7 @@ from typing import Dict, Any
 # Import routers
 from src.routers import chat
 from src.routers import research
+from src.routers import background_task
 # Import middleware
 from src.middleware.logging import LoggingMiddleware
 from src.middleware.metrics import MetricsMiddleware, get_metrics
@@ -57,6 +58,14 @@ app.include_router(
     prefix="/v1",
     dependencies=[Depends(verify_token)]
 )
+
+app.include_router(
+    background_task.router,
+    prefix="/v1",
+    dependencies=[Depends(verify_token)]
+)
+
+
 
 
 @app.get("/health")
