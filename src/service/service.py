@@ -6,19 +6,18 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from typing import Dict, Any
 
 # Import routers
-from ..routers import chat, react, tasks
+from src.routers import chat, react, tasks
 
 # Import middleware
-from ..middleware.logging import LoggingMiddleware
-from ..middleware.metrics import MetricsMiddleware, get_metrics
-from ..middleware.safety import SafetyMiddleware
+from src.middleware.logging import LoggingMiddleware
+from src.middleware.metrics import MetricsMiddleware, get_metrics
+from src.middleware.safety import SafetyMiddleware
 
 # Import settings and core components
-from ..core.settings import settings
-from ..core.llm import get_llm
-from ..agents.bg_tasks.tasks import TaskManager
-from ..agents.bg_tasks.agent import BackgroundAgent
-from src.agents.bg_tasks.tasks import BackgroundAgent
+from src.core.settings import settings
+from src.core.llm import get_llm
+from src.agents.bg_tasks.tasks import TaskManager
+from src.agents.bg_tasks.agent import BackgroundAgent
 
 # Create FastAPI app
 app = FastAPI(

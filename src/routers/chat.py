@@ -15,17 +15,24 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 @router.post("")
 async def chat(user_input: UserInput) -> ChatMessage:
-    """
-    Basic chat endpoint that handles message history and state management.
-    """
+    """Basic chat endpoint that handles message history and state management."""
     try:
+        print(f"Processing chat request: {user_input}") # Debug log
+        
         result = await chat_agent.handle_message(
             message=user_input.message,
             thread_id=user_input.thread_id,
             model=user_input.model,
             metadata=user_input.metadata
         )
+        print(f"Got chat result: {result}") # Debug log
         
+        if not result or "response" not in result:
+            raise HTTPException(
+                status_code=500,
+                detail="No response received from model"
+            )
+            
         return ChatMessage(
             type="ai",
             content=result["response"],
@@ -35,6 +42,7 @@ async def chat(user_input: UserInput) -> ChatMessage:
             }
         )
     except Exception as e:
+        print(f"Error in chat endpoint: {str(e)}") # Debug log
         raise HTTPException(
             status_code=500,
             detail=f"Error processing chat request: {str(e)}"
@@ -43,26 +51,29 @@ async def chat(user_input: UserInput) -> ChatMessage:
 async def _stream_generator(user_input: UserInput) -> AsyncGenerator[str, None]:
     """Generate streaming response for chat messages."""
     try:
+        print(f"Starting stream generator for: {user_input}") # Debug log
+        
         if user_input.stream:
-            # Use streaming LLM
             async for chunk in generate_stream(
                 [HumanMessage(content=user_input.message)],
                 model_name=user_input.model
             ):
+                print(f"Streaming chunk: {chunk}") # Debug log
                 yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
         else:
-            # Get full response
             result = await chat_agent.handle_message(
                 message=user_input.message,
                 thread_id=user_input.thread_id,
                 model=user_input.model,
                 metadata=user_input.metadata
             )
+            print(f"Got non-streaming result: {result}") # Debug log
             
             yield f"data: {json.dumps({'type': 'message', 'content': result['response']})}\n\n"
             
         yield "data: [DONE]\n\n"
     except Exception as e:
+        print(f"Error in stream generator: {str(e)}") # Debug log
         yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
 
 @router.post("/stream")

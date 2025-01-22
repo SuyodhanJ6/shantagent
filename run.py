@@ -10,5 +10,6 @@ if __name__ == "__main__":
         "src.service.service:app",  # Change this line
         host=settings.HOST,
         port=settings.PORT,
+        log_level="debug",
         reload=True
     )

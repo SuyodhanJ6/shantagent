@@ -17,6 +17,7 @@ class Settings(BaseSettings):
 
     # API Configuration
     GROQ_API_KEY: Annotated[SecretStr, BeforeValidator(check_api_key)]
+    TAVILY_API_KEY: SecretStr
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     

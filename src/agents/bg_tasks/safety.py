@@ -9,7 +9,7 @@ class LlamaSafety:
     def __init__(self, api_key: str):
         # Use Groq's hosted LlamaGuard model
         self.llm = ChatGroq(
-            model="llama-guard-2",
+            model="llama-guard-3-8b",
             api_key=api_key,
             temperature=0
         )
@@ -25,7 +25,8 @@ class LlamaSafety:
         response = await self.llm.ainvoke([{"role": "user", "content": prompt}])
         result = response.content.strip().upper()
         
-        if result.startswith("TRUE"):
+        # Fix this logic
+        if result == "SAFE" or result.startswith("TRUE"):  # Add SAFE as a valid response
             return True, ""
         else:
             reason = result.replace("FALSE", "").strip()
@@ -42,7 +43,8 @@ class LlamaSafety:
         response = await self.llm.ainvoke([{"role": "user", "content": prompt}])
         result = response.content.strip().upper()
         
-        if result.startswith("TRUE"):
+        # Fix this logic
+        if result == "SAFE" or result.startswith("TRUE"):  # Add SAFE as a valid response
             return True, ""
         else:
             reason = result.replace("FALSE", "").strip()

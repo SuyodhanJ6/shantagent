@@ -22,9 +22,9 @@ class StreamingCallbackHandler(BaseCallbackHandler):
 @cache
 def get_llm(model_name: str | None = None, streaming: bool = False) -> ChatGroq:
     """Get a cached LLM instance."""
-    model = model_name or settings.DEFAULT_MODEL
+    print(f"Creating LLM instance with model: {model_name}") # Debug log
     
-    callback_manager = CallbackManager([StreamingCallbackHandler()]) if streaming else None
+    model = model_name or settings.DEFAULT_MODEL
     
     return ChatGroq(
         model=model,
@@ -32,7 +32,6 @@ def get_llm(model_name: str | None = None, streaming: bool = False) -> ChatGroq:
         temperature=settings.MODEL_TEMPERATURE,
         max_tokens=settings.MAX_TOKENS,
         streaming=streaming,
-        callback_manager=callback_manager if streaming else None,
     )
 
 async def generate_stream(
@@ -43,7 +42,8 @@ async def generate_stream(
     client = AsyncGroq(api_key=settings.GROQ_API_KEY.get_secret_value())
     
     try:
-        # Convert messages to the format expected by Groq
+        print(f"Starting stream generation with model: {model_name}") # Debug log
+        
         formatted_messages = [
             {
                 "role": "user" if isinstance(msg, HumanMessage) else "assistant",
@@ -51,6 +51,7 @@ async def generate_stream(
             }
             for msg in messages
         ]
+        print(f"Formatted messages: {formatted_messages}") # Debug log
         
         async for chunk in await client.chat.completions.create(
             messages=formatted_messages,
@@ -60,9 +61,11 @@ async def generate_stream(
             stream=True
         ):
             if chunk.choices[0].delta.content is not None:
+                print(f"Received chunk: {chunk.choices[0].delta.content}") # Debug log
                 yield chunk.choices[0].delta.content
                 
     except Exception as e:
+        print(f"Error in generate_stream: {str(e)}") # Debug log
         yield f"Error: {str(e)}"
     finally:
-        await client.close()  # Clean up client resources
+        await client.close()
