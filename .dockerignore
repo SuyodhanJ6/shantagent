@@ -1,0 +1,63 @@
+# Git
+.git
+.gitignore
+.github/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.env
+.venv
+env/
+venv/
+ENV/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+
+# Poetry
+poetry.toml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Project specific
+tests/
+docs/
+*.log
+*.db
+*.sqlite3
+chatbot.db
+.env.*
+!.env.example
+
+# Docker
+docker/
+Dockerfile*
+docker-compose*.yml
+
+# Documentation
+README.md
+CHANGELOG.md
+LICENSE
+CONTRIBUTING.md
+
+# Cache directories
+.mypy_cache/
+.ruff_cache/
+.cache/
+
+# Development files
+*.bak
+*.tmp
+*.temp

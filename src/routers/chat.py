@@ -89,7 +89,7 @@ async def _stream_generator(user_input: UserInput) -> AsyncGenerator[str, None]:
     try:
         # Get OpikTracer from chat agent
         callbacks = []
-        if chat_agent.opik_enabled:  # Changed condition
+        if chat_agent.opik_enabled:
             opik_tracer = OpikTracer(graph=chat_agent.agent.get_graph(xray=True))
             callbacks.append(opik_tracer)
 
@@ -99,14 +99,15 @@ async def _stream_generator(user_input: UserInput) -> AsyncGenerator[str, None]:
         )
         
         if safety_result.safety_assessment == SafetyAssessment.UNSAFE:
-            yield f"data: {json.dumps({
-                'type': 'message',
-                'content': "I apologize, but I cannot provide information about that topic as it may be inappropriate.",
-                'metadata': {
-                    'safety_blocked': True,
-                    'unsafe_categories': safety_result.unsafe_categories
+            unsafe_response = {
+                "type": "message",
+                "content": "I apologize, but I cannot provide information about that topic as it may be inappropriate.",
+                "metadata": {
+                    "safety_blocked": True,
+                    "unsafe_categories": safety_result.unsafe_categories
                 }
-            })}\n\n"
+            }
+            yield f"data: {json.dumps(unsafe_response)}\n\n"
             yield "data: [DONE]\n\n"
             return
 
@@ -119,7 +120,8 @@ async def _stream_generator(user_input: UserInput) -> AsyncGenerator[str, None]:
             
         yield "data: [DONE]\n\n"
     except Exception as e:
-        yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+        error_response = {"type": "error", "content": str(e)}
+        yield f"data: {json.dumps(error_response)}\n\n"
 
 @router.post("/stream")
 async def stream_chat(user_input: UserInput) -> StreamingResponse:
