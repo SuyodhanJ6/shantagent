@@ -15,6 +15,8 @@ from src.middleware.metrics import MetricsMiddleware, get_metrics
 from src.core.settings import settings
 from src.core.llm import get_llm
 
+
+
 # Create FastAPI app
 app = FastAPI(
     title="Agent Service",

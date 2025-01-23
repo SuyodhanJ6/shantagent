@@ -12,6 +12,9 @@ from src.core.safety import  SafetyAssessment
 from src.core.llama_guard import LlamaGuard
 from src.core.llama_guard import llama_guard, SafetyAssessment
 
+import opik
+from opik.integrations.langchain import OpikTracer
+
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 async def check_message_safety(message: str) -> Dict[str, any]:
@@ -84,7 +87,12 @@ async def chat(user_input: UserInput) -> ChatMessage:
 
 async def _stream_generator(user_input: UserInput) -> AsyncGenerator[str, None]:
     try:
-        # Initial safety check
+        # Get OpikTracer from chat agent
+        callbacks = []
+        if chat_agent.opik_enabled:  # Changed condition
+            opik_tracer = OpikTracer(graph=chat_agent.agent.get_graph(xray=True))
+            callbacks.append(opik_tracer)
+
         safety_result = await llama_guard.ainvoke(
             "human", 
             [HumanMessage(content=user_input.message)]
@@ -93,7 +101,7 @@ async def _stream_generator(user_input: UserInput) -> AsyncGenerator[str, None]:
         if safety_result.safety_assessment == SafetyAssessment.UNSAFE:
             yield f"data: {json.dumps({
                 'type': 'message',
-                'content': "I apologize, but I cannot provide information about that topic as it may be inappropriate. Please ask something else.",
+                'content': "I apologize, but I cannot provide information about that topic as it may be inappropriate.",
                 'metadata': {
                     'safety_blocked': True,
                     'unsafe_categories': safety_result.unsafe_categories
@@ -102,43 +110,13 @@ async def _stream_generator(user_input: UserInput) -> AsyncGenerator[str, None]:
             yield "data: [DONE]\n\n"
             return
 
-        buffer = ""
         async for chunk in generate_stream(
             [HumanMessage(content=user_input.message)],
-            model_name=user_input.model
+            model_name=user_input.model,
+            callbacks=callbacks
         ):
-            buffer += chunk
-            # Check safety every 100 characters
-            if len(buffer) >= 100:
-                safety_result = await llama_guard.ainvoke("ai", [HumanMessage(content=buffer)])
-                if safety_result.safety_assessment == SafetyAssessment.UNSAFE:
-                    yield f"data: {json.dumps({
-                        'type': 'message',
-                        'content': "Response contained inappropriate content and was blocked.",
-                        'metadata': {
-                            'safety_blocked': True,
-                            'unsafe_categories': safety_result.unsafe_categories
-                        }
-                    })}\n\n"
-                    yield "data: [DONE]\n\n"
-                    return
-                buffer = ""
-            
             yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
-        
-        # Final safety check on any remaining content
-        if buffer:
-            safety_result = await llama_guard.ainvoke("ai", [HumanMessage(content=buffer)])
-            if safety_result.safety_assessment == SafetyAssessment.UNSAFE:
-                yield f"data: {json.dumps({
-                    'type': 'message',
-                    'content': "Response contained inappropriate content and was blocked.",
-                    'metadata': {
-                        'safety_blocked': True,
-                        'unsafe_categories': safety_result.unsafe_categories
-                    }
-                })}\n\n"
-                
+            
         yield "data: [DONE]\n\n"
     except Exception as e:
         yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
