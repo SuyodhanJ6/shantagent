@@ -5,13 +5,17 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from typing import Dict, Any
 
 # Import routers
-from src.routers import chat, react
+from src.routers import chat
+from src.routers import research
+from src.routers import background_task
 # Import middleware
 from src.middleware.logging import LoggingMiddleware
 from src.middleware.metrics import MetricsMiddleware, get_metrics
 # Import settings and core components
 from src.core.settings import settings
 from src.core.llm import get_llm
+
+
 
 # Create FastAPI app
 app = FastAPI(
@@ -52,10 +56,18 @@ app.include_router(
     dependencies=[Depends(verify_token)]
 )
 app.include_router(
-    react.router,
+    research.router,
     prefix="/v1",
     dependencies=[Depends(verify_token)]
 )
+
+app.include_router(
+    background_task.router,
+    prefix="/v1",
+    dependencies=[Depends(verify_token)]
+)
+
+
 
 
 @app.get("/health")

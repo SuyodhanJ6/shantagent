@@ -6,9 +6,9 @@ from langchain_groq import ChatGroq
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain_core.messages import HumanMessage, AIMessage
 from groq import AsyncGroq
-
+import uuid
 from src.core.settings import settings
-
+from opik.integrations.langchain import OpikTracer
 class StreamingCallbackHandler(BaseCallbackHandler):
     """Handler for streaming tokens."""
     
@@ -35,22 +35,39 @@ def get_llm(model_name: str | None = None, streaming: bool = False) -> ChatGroq:
         callback_manager=callback_manager if streaming else None,
     )
 
+
+class StreamOpikTracer(OpikTracer):
+    """Custom Opik tracer for streaming."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.current_run_id = None
+        
+    async def on_llm_start(self, serialized, messages, **kwargs):
+        self.current_run_id = str(uuid.uuid4())
+        return {"run_id": self.current_run_id}
+        
+    async def on_llm_new_token(self, token: str, **kwargs):
+        pass
+        
+    async def on_llm_end(self, response, **kwargs):
+        pass
+
 async def generate_stream(
     messages: List[HumanMessage | AIMessage], 
-    model_name: str | None = None
+    model_name: str | None = None,
+    callbacks: List[Any] = None
 ) -> AsyncGenerator[str, None]:
-    """Generate streaming response."""
     client = AsyncGroq(api_key=settings.GROQ_API_KEY.get_secret_value())
+    tracer = StreamOpikTracer() if callbacks else None
     
     try:
-        # Convert messages to the format expected by Groq
         formatted_messages = [
-            {
-                "role": "user" if isinstance(msg, HumanMessage) else "assistant",
-                "content": msg.content
-            }
+            {"role": "user" if isinstance(msg, HumanMessage) else "assistant", "content": msg.content}
             for msg in messages
         ]
+
+        if tracer:
+            await tracer.on_llm_start({"name": model_name or settings.DEFAULT_MODEL}, messages)
         
         async for chunk in await client.chat.completions.create(
             messages=formatted_messages,
@@ -59,10 +76,15 @@ async def generate_stream(
             max_tokens=settings.MAX_TOKENS,
             stream=True
         ):
-            if chunk.choices[0].delta.content is not None:
-                yield chunk.choices[0].delta.content
+            content = chunk.choices[0].delta.content
+            if content:
+                if tracer:
+                    await tracer.on_llm_new_token(content)
+                yield content
                 
     except Exception as e:
         yield f"Error: {str(e)}"
     finally:
-        await client.close()  # Clean up client resources
+        if tracer:
+            await tracer.on_llm_end(AIMessage(content=""))
+        await client.close()
